@@ -1,3 +1,12 @@
+# Unstoppable IPFS server
+
+Run without SGX:
+```shell
+python3 ./app.py
+```
+
+Visit http://localhost:5100/ipfs/bafkreick47b3nlal573hd35iz5ltqykrybxfrsstu6gyh43ba4ywz3asl4, for example.
+
 # Learning TEE Security: a TEE-based trusted setup
 
 Let's try to finish a meaningful end-to-end example of using SGX to do something useful we couldn't do without it:
