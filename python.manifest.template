@@ -9,7 +9,7 @@ loader.env.LD_LIBRARY_PATH = "/lib:/lib:{{ arch_libdir }}:/usr{{ arch_libdir }}"
 
 loader.env.RA_TYPE = "dcap"
 
-loader.argv = ["./python", "-u", "app.py"]
+loader.argv = ["python", "unicorn.py", "-w1", "-b0.0.0.0:8000", "app:app" ]
 
 sys.enable_sigterm_injection = true
 
@@ -41,7 +41,7 @@ sgx.debug = false
 sgx.edmm_enable = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
 sgx.nonpie_binary = true
 sgx.enclave_size = "256M"
-sgx.max_threads = 2
+sgx.max_threads = 3
 
 sgx.remote_attestation = "dcap"
 
@@ -55,9 +55,11 @@ sgx.trusted_files = [
   "file:{{ path }}{{ '/' if path.is_dir() else '' }}",
 {% endfor %}  
 #
-  "file:app.py",
   "file:ipfs_cid/",
   "file:/etc/ssl/certs/ca-certificates.crt",
+  "file:rsademo.py",
+  "file:app.py",
+  "file:unicorn.py",
 ]
 
 # Untrusted files for communication with the host can go here

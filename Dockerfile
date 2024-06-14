@@ -1,7 +1,7 @@
 FROM gramineproject/gramine:v1.5
 
 RUN apt-get update
-RUN apt-get install -y make python3-requests
+RUN apt-get install -y make
 
 ENV SGX 1
 
@@ -9,16 +9,21 @@ RUN gramine-sgx-gen-private-key
 
 WORKDIR /root/
 
+RUN apt-get install -y make
+
+RUN apt-get install -y python3-pip
+RUN pip install gunicorn flask requests
+
 ADD app.py ./
-ADD ipfs_cid ./ipfs_cid
+ADD unicorn.py ./
+ADD rsademo.py ./
 ADD python.manifest.template ./
 ADD Makefile ./
+ADD ipfs_cid ./ipfs_cid
 
 RUN mkdir -p untrustedhost
 
 RUN SGX=1 make
-
-EXPOSE 5100
 
 ENTRYPOINT []
 CMD [ "gramine-sgx-sigstruct-view", "python.sig" ]
