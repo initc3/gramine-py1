@@ -1,3 +1,4 @@
+import ssl
 import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from ipfs_cid import cid_sha256_unwrap_digest
@@ -50,7 +51,7 @@ class IPFSRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b"Node has not bootstrapped yet. It cannot securely serve IPFS files.".encode())
                 return
-            
+
             ipfs_hash = self.path[6:]
             try:
                 hash_bytes = cid_sha256_unwrap_digest(ipfs_hash)
@@ -124,7 +125,7 @@ def generate_keys_and_csr():
     print("[Bootstrap] Init")
     # Generate a private key
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    
+
     # Generate a public key
     public_key = private_key.public_key()
 
@@ -149,10 +150,10 @@ def generate_keys_and_csr():
         print(f"[Bootstrap] Stored private key in {public_key_path}")
         # print(f"[Bootstrap] Public key: {public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo)}")
 
-    DOMAIN_NAME = u"example.com"
+    DOMAIN_NAME = u"item3.ln.soc1024.com"
     # Create a CSR
     csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, u"example.com"),
+        x509.NameAttribute(NameOID.COMMON_NAME, DOMAIN_NAME)
     ])).sign(private_key, hashes.SHA256())
 
     csr_path = "request.csr"
@@ -167,19 +168,22 @@ def generate_keys_and_csr():
     certbot_command = [
         "certbot",
         "certonly",                   # Request a certificate only, without installing it
+        "--standalone",                   # Request a certificate only, without installing it
         "--csr", csr_path,            # Path to the CSR file
-        "--agree-tos",                # Agree to the terms of service
-        "--no-eff-email",             # Do not share your email address with EFF
-        "--manual",                   # Use manual verification
-        "--preferred-challenges", "dns", # Use DNS challenge to verify domain ownership
-        "--cert-name", DOMAIN_NAME,   # Name for the certificate
-        "--fullchain-path", CERTIFICATE_PATH  # Path to save the resulting certificate
+        "--preferred-challenges", "http", # Use DNS challenge to verify domain ownership
+        "--http-01-port", "8082",
+        "-d item3.ln.soc1024.com",
+        # "--cert-name", DOMAIN_NAME,   # Name for the certificate
+        "--fullchain-path", CERTIFICATE_PATH,  # Path to save the resulting certificate
+        "--config-dir", ".",
+        "--work-dir", ".",
+        "--logs-dir", "."
     ]
 
     try:
         # Execute the certbot command
         subprocess.run(certbot_command, check=True)
-        print(f"Certificate successfully obtained and saved to {certificate_path}")
+        print(f"Certificate successfully obtained and saved to {CERTIFICATE_PATH}")
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while running certbot: {e}")
 
@@ -189,7 +193,7 @@ def generate_keys_and_csr():
 
     print("[Bootstrap] Certificate: ", certificate)
     print("[Bootstrap] Done")
-    return private_key, public_key, certificate_path
+    return private_key, public_key, CERTIFICATE_PATH
 
 def generate_dh_parameters():
     return dh.generate_parameters(generator=2, key_size=2048)
@@ -290,11 +294,11 @@ def perform_diffie_hellman(client_public_key_pem):
         info=b'handshake data'
     ).derive(shared_key)
 
-    return derived_key 
+    return derived_key
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=5000, help='Port to run the server on')
+    parser.add_argument('--port', type=int, default=8083, help='Port to run the server on')
     parser.add_argument('--gateway', default='https://ipfs.io', help='Upstream gateway to use')
     # Add the bootstrap_mode argument
     parser.add_argument('--bootstrap_mode', action='store_true', help='Generate public and private keys if set')
@@ -316,8 +320,14 @@ if __name__ == '__main__':
         print(f"Initiating bootstrap with {args.bootstrap_link}")
         certificate_private_key, certificate_public_key, certificate = init_bootstrap(args.bootstrap_link)
 
+    # HTTPS stuff
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+    context.load_cert_chain(certfile=certificate, keyfile="private_key.pem", password='')
     gateway = args.gateway
     server_address = ('', args.port)
     httpd = HTTPServer(server_address, IPFSRequestHandler)
+
+    # Wrap the httpd with TLS certificate chain
+    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
     print(f"Starting server on port {args.port}...")
     httpd.serve_forever()
