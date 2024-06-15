@@ -1,3 +1,4 @@
+import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from ipfs_cid import cid_sha256_unwrap_digest
 import requests
@@ -157,30 +158,23 @@ def generate_keys_and_csr():
     csr_path = "request.csr"
     with open(csr_path, "wb") as f:
         f.write(csr.public_bytes(serialization.Encoding.PEM))
-        print(f"[Bootstrap] Stored certificate in {csr_file}")
+        print(f"[Bootstrap] Stored certificate in {csr_path}")
         # print(f"[Bootstrap] CSR: {csr.public_bytes(encoding=serialization.Encoding.PEM)}")
 
     # Use certbot to obtain a certificate
     CERTIFICATE_PATH = "certificate.pem"
 
     certbot_command = [
-    "certbot",
-    "certonly",                   # Request a certificate only, without installing it
-    "--csr", csr_path,            # Path to the CSR file
-    "--agree-tos",                # Agree to the terms of service
-    "--no-eff-email",             # Do not share your email address with EFF
-    "--manual",                   # Use manual verification
-    "--preferred-challenges", "dns", # Use DNS challenge to verify domain ownership
-    "--cert-name", DOMAIN_NAME,   # Name for the certificate
-    "--fullchain-path", CERTIFICATE_PATH  # Path to save the resulting certificate
-
-    try:
-        # Execute the certbot command
-        subprocess.run(certbot_command, check=True)
-        print(f"[Bootstrap] Certificate successfully obtained and saved to {certificate_path}")
-    except subprocess.CalledProcessError as e:
-        print(f"[Bootstrap] An error occurred while running certbot: {e}")
-]
+        "certbot",
+        "certonly",                   # Request a certificate only, without installing it
+        "--csr", csr_path,            # Path to the CSR file
+        "--agree-tos",                # Agree to the terms of service
+        "--no-eff-email",             # Do not share your email address with EFF
+        "--manual",                   # Use manual verification
+        "--preferred-challenges", "dns", # Use DNS challenge to verify domain ownership
+        "--cert-name", DOMAIN_NAME,   # Name for the certificate
+        "--fullchain-path", CERTIFICATE_PATH  # Path to save the resulting certificate
+    ]
 
     try:
         # Execute the certbot command
@@ -189,7 +183,13 @@ def generate_keys_and_csr():
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while running certbot: {e}")
 
-    return private_key, public_key, csr
+    certificate = None
+    with open(CERTIFICATE_PATH, "rb") as f:
+        certificate = f.read()
+
+    print("[Bootstrap] Certificate: ", certificate)
+    print("[Bootstrap] Done")
+    return private_key, public_key, certificate_path
 
 def generate_dh_parameters():
     return dh.generate_parameters(generator=2, key_size=2048)
@@ -306,7 +306,7 @@ if __name__ == '__main__':
 
     # Check if bootstrap_mode is set to True
     if args.bootstrap_mode:
-        certificate_private_key, certificate_public_key, csr_file = generate_keys_and_csr()
+        certificate_private_key, certificate_public_key, certificate = generate_keys_and_csr()
         print("Public and private keys generated.")
         has_bootstrapped = True
     else:
@@ -314,7 +314,7 @@ if __name__ == '__main__':
         print("Bootstrap mode is not enabled.")
         print("Node must bootstrap before serving HTTP.")
         print(f"Initiating bootstrap with {args.bootstrap_link}")
-        certificate_private_key, certificate_public_key, csr_file = init_bootstrap(args.bootstrap_link)
+        certificate_private_key, certificate_public_key, certificate = init_bootstrap(args.bootstrap_link)
 
     gateway = args.gateway
     server_address = ('', args.port)
