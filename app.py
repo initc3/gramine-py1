@@ -7,6 +7,9 @@ from hashlib import sha256
 import argparse
 import json
 import base64
+import os
+import time
+import socket
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -21,9 +24,12 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
+PRIVATE_KEY_PATH = "data/private_key.pem"
+CERTIFICATE_PATH = "untrustedhost/certificate.pem"
+
 # Generate a public/private key pair
-client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-client_public_key = client_private_key.public_key()
+#client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+#client_public_key = client_private_key.public_key()
 
 def verify_mrenclave(mrenclave):
     # Placeholder function to verify MRENCLAVE using SGX DCAP
@@ -120,7 +126,7 @@ class IPFSRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.end_headers()
                 self.wfile.write(b'Forbidden: MRENCLAVE verification failed')
-
+    
 def generate_keys_and_csr():
     print("[Bootstrap] Init")
     # Generate a private key
@@ -130,18 +136,18 @@ def generate_keys_and_csr():
     public_key = private_key.public_key()
 
     # Write private key to a file
-    private_key_path = "private_key.pem"
-    with open(private_key_path, "wb") as f:
+
+    with open(PRIVATE_KEY_PATH, "wb") as f:
         f.write(private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.TraditionalOpenSSL,
             encryption_algorithm=serialization.NoEncryption()
         ))
-        print(f"[Bootstrap] Stored private key in {private_key_path}")
+        print(f"[Bootstrap] Stored private key in {PRIVATE_KEY_PATH}")
         # print(f"[Bootstrap] Private key: {private_key.private_bytes(encoding=serialization.Encoding.PEM, format=serialization.PrivateFormat.TraditionalOpenSSL, encryption_algorithm=serialization.NoEncryption())}")
 
     # Write public key to a file
-    public_key_path = "public_key.pem"
+    public_key_path = "untrustedhost/public_key.pem"
     with open(public_key_path, "wb") as f:
         f.write(public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
@@ -150,42 +156,23 @@ def generate_keys_and_csr():
         print(f"[Bootstrap] Stored private key in {public_key_path}")
         # print(f"[Bootstrap] Public key: {public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo)}")
 
-    DOMAIN_NAME = u"item3.ln.soc1024.com"
+    DOMAIN_NAME = u"item4.ln.soc1024.com"
     # Create a CSR
     csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, DOMAIN_NAME)
     ])).sign(private_key, hashes.SHA256())
 
-    csr_path = "request.csr"
+    csr_path = "untrustedhost/request.csr"
     with open(csr_path, "wb") as f:
         f.write(csr.public_bytes(serialization.Encoding.PEM))
         print(f"[Bootstrap] Stored certificate in {csr_path}")
         # print(f"[Bootstrap] CSR: {csr.public_bytes(encoding=serialization.Encoding.PEM)}")
 
     # Use certbot to obtain a certificate
-    CERTIFICATE_PATH = "certificate.pem"
-
-    certbot_command = [
-        "certbot",
-        "certonly",                   # Request a certificate only, without installing it
-        "--standalone",                   # Request a certificate only, without installing it
-        "--csr", csr_path,            # Path to the CSR file
-        "--preferred-challenges", "http", # Use DNS challenge to verify domain ownership
-        "--http-01-port", "8082",
-        "-d item3.ln.soc1024.com",
-        # "--cert-name", DOMAIN_NAME,   # Name for the certificate
-        "--fullchain-path", CERTIFICATE_PATH,  # Path to save the resulting certificate
-        "--config-dir", ".",
-        "--work-dir", ".",
-        "--logs-dir", "."
-    ]
-
-    try:
-        # Execute the certbot command
-        subprocess.run(certbot_command, check=True)
-        print(f"Certificate successfully obtained and saved to {CERTIFICATE_PATH}")
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred while running certbot: {e}")
+    while not os.path.isfile(CERTIFICATE_PATH):
+        print('waiting for certificate.pem...')
+        time.sleep(1)
+    time.sleep(0.2)
 
     certificate = None
     with open(CERTIFICATE_PATH, "rb") as f:
@@ -297,6 +284,7 @@ def perform_diffie_hellman(client_public_key_pem):
     return derived_key
 
 if __name__ == '__main__':
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8083, help='Port to run the server on')
     parser.add_argument('--gateway', default='https://ipfs.io', help='Upstream gateway to use')
@@ -313,21 +301,26 @@ if __name__ == '__main__':
         certificate_private_key, certificate_public_key, certificate = generate_keys_and_csr()
         print("Public and private keys generated.")
         has_bootstrapped = True
-    else:
+    elif True:
         # Connect to a bootstrapping enclave
         print("Bootstrap mode is not enabled.")
         print("Node must bootstrap before serving HTTP.")
         print(f"Initiating bootstrap with {args.bootstrap_link}")
         certificate_private_key, certificate_public_key, certificate = init_bootstrap(args.bootstrap_link)
+    else:
+        pass
+    
+    # Blast past a failure... without it this fails in gramine
+    # when calling ssl.wrap_socket
+    ssl.SSLSocket.getpeername = lambda _: None
+    
+    # Create an HTTP server with the SSL-wrapped socket
+    httpd = HTTPServer(('0.0.0.0', args.port), IPFSRequestHandler)
+    httpd.socket = ssl.wrap_socket(httpd.socket,
+                                   certfile=CERTIFICATE_PATH,
+                                   keyfile=PRIVATE_KEY_PATH,
+                                   server_side=True,
+                                   do_handshake_on_connect=False)
 
-    # HTTPS stuff
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-    context.load_cert_chain(certfile=certificate, keyfile="private_key.pem", password='')
-    gateway = args.gateway
-    server_address = ('', args.port)
-    httpd = HTTPServer(server_address, IPFSRequestHandler)
-
-    # Wrap the httpd with TLS certificate chain
-    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
     print(f"Starting server on port {args.port}...")
     httpd.serve_forever()

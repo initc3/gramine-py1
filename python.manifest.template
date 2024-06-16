@@ -5,11 +5,14 @@ libos.entrypoint = "{{ entrypoint }}"
 
 loader.log_level = "{{ log_level }}"
 
+loader.env.PYTHONUNBUFFERED = "1"
+
 loader.env.LD_LIBRARY_PATH = "/lib:/lib:{{ arch_libdir }}:/usr{{ arch_libdir }}"
 
 loader.env.RA_TYPE = "dcap"
 
-loader.argv = ["python", "unicorn.py", "-w1", "-b0.0.0.0:8000", "app:app" ]
+#loader.argv = ["python", "unicorn.py", "-w1", "-b0.0.0.0:8000", "app:app" ]
+loader.argv = ["python", "app.py", "--bootstrap_mode"]
 
 sys.enable_sigterm_injection = true
 
@@ -27,9 +30,9 @@ fs.mounts = [
   
 
   { type = "tmpfs", path = "/tmp" },
-  { type = "encrypted", path = "/data/", uri = "file:enclave_data/", key_name = "_sgx_mrenclave" },
+  { type = "encrypted", path = "/data/", uri = "file:enclave_data/", key_name = "_sgx_mrsigner" },
 
-#  { path = "/untrustedhost", uri = "file:untrustedhost/" },
+  { path = "/untrustedhost", uri = "file:untrustedhost/" },
   { path = "/etc/ssl/certs/ca-certificates.crt", uri = "file:/etc/ssl/certs/ca-certificates.crt" },
 ]
 
@@ -63,6 +66,6 @@ sgx.trusted_files = [
 ]
 
 # Untrusted files for communication with the host can go here
-# sgx.allowed_files = [
-#  "file:untrustedhost",
-#]
+sgx.allowed_files = [
+  "file:untrustedhost",
+]

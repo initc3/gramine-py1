@@ -21,7 +21,7 @@ ADD python.manifest.template ./
 ADD Makefile ./
 ADD ipfs_cid ./ipfs_cid
 
-RUN mkdir -p untrustedhost
+RUN mkdir -p untrustedhost enclave_data
 
 RUN SGX=1 make
 
