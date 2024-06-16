@@ -11,8 +11,8 @@ WORKDIR /root/
 
 RUN apt-get install -y make
 
-RUN apt-get install -y python3-pip
-RUN pip install gunicorn flask requests cryptography>=35.0.0
+RUN apt-get install -y python3-pip inotify-tools
+RUN pip install --upgrade pyopenssl gunicorn flask requests cryptography>=35.0.0 certbot
 
 ADD app.py ./
 ADD unicorn.py ./
