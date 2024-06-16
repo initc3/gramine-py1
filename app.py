@@ -130,7 +130,7 @@ class IPFSRequestHandler(BaseHTTPRequestHandler):
 def generate_keys_and_csr():
     print("[Bootstrap] Init")
     # Generate a private key
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
 
     # Generate a public key
     public_key = private_key.public_key()
@@ -160,7 +160,7 @@ def generate_keys_and_csr():
     # Create a CSR
     csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, DOMAIN_NAME)
-    ])).sign(private_key, hashes.SHA256())
+    ])).sign(private_key, hashes.SHA256(), backend=default_backend())
 
     csr_path = "untrustedhost/request.csr"
     with open(csr_path, "wb") as f:

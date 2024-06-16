@@ -12,7 +12,7 @@ WORKDIR /root/
 RUN apt-get install -y make
 
 RUN apt-get install -y python3-pip
-RUN pip install gunicorn flask requests
+RUN pip install gunicorn flask requests cryptography>=35.0.0
 
 ADD app.py ./
 ADD unicorn.py ./
@@ -20,6 +20,7 @@ ADD rsademo.py ./
 ADD python.manifest.template ./
 ADD Makefile ./
 ADD ipfs_cid ./ipfs_cid
+ADD run.sh ./
 
 RUN mkdir -p untrustedhost enclave_data
 
