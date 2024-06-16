@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import ssl
 import subprocess
 from ipfs_cid import cid_sha256_unwrap_digest
@@ -93,6 +93,10 @@ def bootstrap():
         return jsonify(response), 200
     else:
         return 'Forbidden: MRENCLAVE verification failed', 403
+
+@app.route('/')
+def home_page():
+    return render_template('index.html')
     
 def generate_keys_and_csr():
     print("[Bootstrap] Init")
