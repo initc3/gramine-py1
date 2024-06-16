@@ -46,7 +46,8 @@
         <button class="search-button">Search</button>
     </div>  -->
 
-    <form class="search-container" action="search" method="post"> 
+    <form class="search-container" action="search" method="post"
+	  onsubmit="window.location.href='/ipfs/' + this.user_input.value; return false;">
         <label for="user_input">Enter IPFS address:</label>
         <input type="text" class="search-box" placeholder="Type your search..." id="user_input" name="user_input">
         <button class="search-button" type="submit">Search</button>

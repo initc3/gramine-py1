@@ -51,13 +51,13 @@ def read_certificate():
 
 class IPFSRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith('/ipfs/'):
-            if not has_bootstrapped:
-                self.send_response(404)
-                self.end_headers()
-                self.wfile.write(b"Node has not bootstrapped yet. It cannot securely serve IPFS files.".encode())
-                return
+        if self.path == '/':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(open('templates/index.html','rb').read())
+            return
 
+        if self.path.startswith('/ipfs/'):
             ipfs_hash = self.path[6:]
             try:
                 hash_bytes = cid_sha256_unwrap_digest(ipfs_hash)
@@ -66,7 +66,7 @@ class IPFSRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b"Error parsing IPFS CID. Make sure it's a v1 that uses SHA-256.")
                 return
-            url = f"{gateway}/ipfs/{ipfs_hash}"
+            url = f"{args.gateway}/ipfs/{ipfs_hash}"
             print(url)
             try:
                 response = requests.get(url, timeout=3)
@@ -316,7 +316,8 @@ if __name__ == '__main__':
     
     # Create an HTTP server with the SSL-wrapped socket
     httpd = HTTPServer(('0.0.0.0', args.port), IPFSRequestHandler)
-    httpd.socket = ssl.wrap_socket(httpd.socket,
+    if True:
+        httpd.socket = ssl.wrap_socket(httpd.socket,
                                    certfile=CERTIFICATE_PATH,
                                    keyfile=PRIVATE_KEY_PATH,
                                    server_side=True,
