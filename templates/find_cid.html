@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drag and Drop File Hash Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        #drop_zone {
+            width: 90%;
+            height: 200px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            margin: 20px auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #drop_zone:hover, #drop_zone.dragover {
+            background-color: #f9f9f9;
+        }
+        #hash_result {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="drop_zone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)">
+        <p>Drag a file here to calculate its compatible SHA-256 IPFS v1 CID</p>
+    </div>
+    <div id="hash_result"></div>
+
+    <script>
+        function handleDrop(event) {
+            event.preventDefault();
+            const file = event.dataTransfer.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const buffer = e.target.result;
+                console.log(buffer);
+                crypto.subtle.digest('SHA-256', buffer).then(function(hash) {
+                    const hashArray = Array.from(new Uint8Array(hash));
+                    const hashHex = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
+                    document.getElementById('hash_result').innerText = `Calculating...`;
+                    fetch(`/get-compatible-cid/${hashHex}`)
+                        .then(response => response.text())
+                        .then(data => {
+                            document.getElementById('hash_result').innerText = `CID: ${data}`;
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            document.getElementById('hash_result').innerText = `Error fetching compatible CID`;
+                        });
+                });
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+        }
+    </script>
+</body>
+</html>
+

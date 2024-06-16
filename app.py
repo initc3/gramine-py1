@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, render_template
 import ssl
 import subprocess
-from ipfs_cid import cid_sha256_unwrap_digest
+from ipfs_cid import cid_sha256_unwrap_digest, cid_sha256_wrap_digest
 import requests
 from hashlib import sha256
 import argparse
@@ -93,6 +93,15 @@ def bootstrap():
         return jsonify(response), 200
     else:
         return 'Forbidden: MRENCLAVE verification failed', 403
+
+@app.route('/get-compatible-cid/<sha256_val>', methods=["GET"])
+def get_compatible_cid(sha256_val):
+    cid = cid_sha256_wrap_digest(bytes.fromhex(sha256_val))
+    return cid
+
+@app.route('/find-cid')
+def find_cid():
+    return render_template('find_cid.html')
 
 @app.route('/')
 def home_page():
