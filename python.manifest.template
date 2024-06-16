@@ -34,6 +34,7 @@ fs.mounts = [
 
   { path = "/untrustedhost", uri = "file:untrustedhost/" },
   { path = "/etc/ssl/certs/ca-certificates.crt", uri = "file:/etc/ssl/certs/ca-certificates.crt" },
+  { path = "/templates", uri = "file:templates/" },
 ]
 
 sys.stack.size = "2M"
@@ -63,6 +64,7 @@ sgx.trusted_files = [
   "file:rsademo.py",
   "file:app.py",
   "file:unicorn.py",
+  "file:templates/",
 ]
 
 # Untrusted files for communication with the host can go here

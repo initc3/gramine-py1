@@ -62,7 +62,7 @@ def serve_ipfs(ipfs_hash):
     url = f"{gateway}/ipfs/{ipfs_hash}"
     print(url)
     try:
-        response = requests.get(url, timeout=3)
+        response = requests.get(url, timeout=5)
     except requests.exceptions.ReadTimeout:
         return f"Error fetching {ipfs_hash}: gateway timeout (possibly not found)", 504
     if response.status_code == 200:
@@ -127,7 +127,7 @@ def generate_keys_and_csr():
         print(f"[Bootstrap] Stored private key in {public_key_path}")
         # print(f"[Bootstrap] Public key: {public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo)}")
 
-    DOMAIN_NAME = u"item9.ln.soc1024.com"
+    DOMAIN_NAME = u"itema.ln.soc1024.com"
     # Create a CSR
     csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, DOMAIN_NAME)
