@@ -12,7 +12,9 @@ loader.env.LD_LIBRARY_PATH = "/lib:/lib:{{ arch_libdir }}:/usr{{ arch_libdir }}"
 loader.env.RA_TYPE = "dcap"
 
 #loader.argv = ["python", "unicorn.py", "-w1", "-b0.0.0.0:8000", "app:app" ]
-loader.argv = ["python", "app.py", "--bootstrap_mode"]
+loader.argv0_override = "python"
+loader.argv1_override = "app.py"
+loader.insecure__use_cmdline_argv = true
 
 sys.enable_sigterm_injection = true
 

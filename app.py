@@ -295,6 +295,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    print(args)
+
     DOMAIN_NAME=args.domain
 
     has_bootstrapped = False
@@ -304,14 +306,12 @@ if __name__ == '__main__':
         certificate_private_key, certificate_public_key, certificate = generate_keys_and_csr()
         print("Public and private keys generated.")
         has_bootstrapped = True
-    elif True:
+    else:
         # Connect to a bootstrapping enclave
         print("Bootstrap mode is not enabled.")
         print("Node must bootstrap before serving HTTP.")
         print(f"Initiating bootstrap with {args.bootstrap_link}")
         certificate_private_key, certificate_public_key, certificate = init_bootstrap(args.bootstrap_link)
-    else:
-        pass
 
     # Blast past a failure... without it this fails in gramine
     # when calling ssl.wrap_socket
