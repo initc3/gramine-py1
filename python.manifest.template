@@ -12,9 +12,14 @@ loader.env.LD_LIBRARY_PATH = "/lib:/lib:{{ arch_libdir }}:/usr{{ arch_libdir }}"
 loader.env.RA_TYPE = "dcap"
 
 #loader.argv = ["python", "unicorn.py", "-w1", "-b0.0.0.0:8000", "app:app" ]
-loader.argv0_override = "python"
-loader.argv1_override = "app.py"
-loader.insecure__use_cmdline_argv = true
+loader.argv = [
+    "python",
+    "app.py",
+    "--port", "8088"
+]
+loader.env.DOMAIN = { passthrough = true }
+loader.env.BOOTSTRAP_MODE = { passthrough = true }
+loader.env.BOOTSTRAP_LINK = { passthrough = true }
 
 sys.enable_sigterm_injection = true
 
@@ -46,7 +51,7 @@ sgx.debug = false
 sgx.edmm_enable = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
 sgx.nonpie_binary = true
 sgx.enclave_size = "256M"
-sgx.max_threads = 3
+sgx.max_threads = 8
 
 sgx.remote_attestation = "dcap"
 

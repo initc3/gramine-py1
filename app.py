@@ -31,20 +31,39 @@ DOMAIN_NAME=None
 # Generate a public/private key pair
 #client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 #client_public_key = client_private_key.public_key()
+def encrypt_private_key(certificate_private_key, client_public_key_pem):
+    client_public_key = serialization.load_pem_public_key(client_public_key_pem.encode('utf-8'), backend=default_backend())
+    encrypted_key = client_public_key.encrypt(
+        certificate_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption()
+        ),
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    return base64.b64encode(encrypted_key).decode('utf-8')
+
+# Function to decrypt the encrypted private key with the client private key
+def decrypt_private_key(encrypted_key_base64, client_private_key):
+    encrypted_key = base64.b64decode(encrypted_key_base64)
+    decrypted_key = client_private_key.decrypt(
+        encrypted_key,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    return serialization.load_pem_private_key(decrypted_key, password=None, backend=default_backend())
 
 def verify_mrenclave(mrenclave):
     # Placeholder function to verify MRENCLAVE using SGX DCAP
     # This should be implemented properly in a production environment
     return True
-
-def encrypt_private_key(shared_key, certificate_private_key):
-    # Encrypt the private key with the shared key (symmetric encryption)
-    # This is a placeholder for encryption logic
-    return certificate_private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
-    )
 
 def read_certificate():
     with open("certificate.pem", "r") as f:
@@ -157,7 +176,6 @@ def generate_keys_and_csr():
         print(f"[Bootstrap] Stored private key in {public_key_path}")
         # print(f"[Bootstrap] Public key: {public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo)}")
 
-    DOMAIN_NAME = u"item4.ln.soc1024.com"
     # Create a CSR
     csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, DOMAIN_NAME)
@@ -183,38 +201,6 @@ def generate_keys_and_csr():
     print("[Bootstrap] Done")
     return private_key, public_key, CERTIFICATE_PATH
 
-def generate_dh_parameters():
-    return dh.generate_parameters(generator=2, key_size=2048)
-
-def generate_dh_private_key(parameters):
-    return parameters.generate_private_key()
-
-def derive_shared_key(client_private_key, server_public_key):
-    shared_key = client_private_key.exchange(server_public_key)
-    derived_key = HKDF(
-        algorithm=SHA256(),
-        length=32,
-        salt=None,
-        info=b'handshake data'
-    ).derive(shared_key)
-    return derived_key
-
-def decrypt_private_key(encrypted_private_key, shared_key):
-    # Assuming the encrypted private key uses AES-GCM for symmetric encryption
-    # This part should match the actual encryption method used by the server
-    nonce = encrypted_private_key[:12]  # First 12 bytes are the nonce
-    tag = encrypted_private_key[-16:]  # Last 16 bytes are the tag
-    ciphertext = encrypted_private_key[12:-16]  # Remainder is the ciphertext
-
-    decryptor = Cipher(
-        algorithms.AES(shared_key),
-        modes.GCM(nonce, tag),
-        backend=default_backend()
-    ).decryptor()
-
-    decrypted_private_key = decryptor.update(ciphertext) + decryptor.finalize()
-    return decrypted_private_key
-
 def init_bootstrap(url: str):
     # Generate a public/private key pair for the client
     client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
@@ -236,73 +222,54 @@ def init_bootstrap(url: str):
     }
 
     # Send a POST request to the given URL
-    response = requests.post(url + '/bootstrap/', json=payload)
+    response = requests.post("https://" + url + '/bootstrap/', json=payload)
 
     if response.status_code == 200:
         response_data = response.json()
         server_public_key_pem = response_data['public_key']
         certificate_pem = response_data['certificate']
-        encrypted_private_key = base64.b64decode(response_data['encrypted_private_key'])
+        encrypted_certificate_private_key = base64.b64decode(response_data['encrypted_private_key'])
 
         # Deserialize the server's public key
         server_public_key = serialization.load_pem_public_key(server_public_key_pem.encode('utf-8'))
 
-        # Perform Diffie-Hellman key exchange to derive the shared key
-        parameters = generate_dh_parameters()
-        client_dh_private_key = generate_dh_private_key(parameters)
-        shared_key = derive_shared_key(client_dh_private_key, server_public_key)
+        # Use the client private key to decrypt the certificate private key
+        certificate_private_key = decrypt_private_key(encrypted_certificate_private_key, client_private_key)
 
-        # Decrypt the private key using the shared key
-        decrypted_private_key = decrypt_private_key(encrypted_private_key, shared_key)
+        with open(PRIVATE_KEY_PATH, "wb") as f:
+            f.write(certificate_private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption()
+            ))
+        print(f"[Bootstrap] Stored certificate private key in {PRIVATE_KEY_PATH}")
+
+        with open(CERTIFICATE_PATH, "rb") as f:
+            f.write(certificate_pem)
+        print(f"[Bootstrap] Stored certificate in {CERTIFICATE_PATH}")
 
         print("Received server public key, certificate, and decrypted private key.")
-        print(f"Server Public Key: {server_public_key_pem}")
         print(f"Certificate: {certificate_pem}")
-        print(f"Decrypted Private Key: {decrypted_private_key.decode('utf-8')}")
+        print(f"Decrypted Private Key: {certificate_private_key.decode('utf-8')}")
 
     else:
         print(f"Failed to bootstrap: {response.status_code} - {response.text}")
 
-def perform_diffie_hellman(client_public_key_pem):
-    # Deserialize client's public key
-    client_public_key = serialization.load_pem_public_key(client_public_key_pem.encode('utf-8'))
-
-    # Generate server's DH private key
-    parameters = dh.generate_parameters(generator=2, key_size=2048)
-    server_private_key = parameters.generate_private_key()
-
-    # Perform the key exchange
-    shared_key = server_private_key.exchange(client_public_key)
-
-    # Derive a symmetric key from the shared key
-    derived_key = HKDF(
-        algorithm=SHA256(),
-        length=32,
-        salt=None,
-        info=b'handshake data'
-    ).derive(shared_key)
-
-    return derived_key
-
 if __name__ == '__main__':
+    print("Entered server main")
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=8083, help='Port to run the server on')
+    parser.add_argument('--port', type=int, default=8086, help='Port to run the server on')
     parser.add_argument('--gateway', default='https://ipfs.io', help='Upstream gateway to use')
-    parser.add_argument('--domain', required=True, help='Domain this node will serve on')
-    # Add the bootstrap_mode argument
-    parser.add_argument('--bootstrap_mode', action='store_true', help='Generate public and private keys if set')
-    parser.add_argument('--bootstrap_link', type=str, help='Link to boostrap node, if not bootstrapping.')
 
     args = parser.parse_args()
 
-    print(args)
-
-    DOMAIN_NAME=args.domain
-
     has_bootstrapped = False
 
-    # Check if bootstrap_mode is set to True
-    if args.bootstrap_mode:
+    DOMAIN_NAME = os.getenv('DOMAIN')
+    bootstrap_link = os.getenv('BOOTSTRAP_LINK')
+    bootstrap_mode = os.getenv('BOOTSTRAP_MODE')
+    if bootstrap_mode == "True":
+        print("Bootstrap mode")
         certificate_private_key, certificate_public_key, certificate = generate_keys_and_csr()
         print("Public and private keys generated.")
         has_bootstrapped = True
@@ -310,8 +277,8 @@ if __name__ == '__main__':
         # Connect to a bootstrapping enclave
         print("Bootstrap mode is not enabled.")
         print("Node must bootstrap before serving HTTP.")
-        print(f"Initiating bootstrap with {args.bootstrap_link}")
-        certificate_private_key, certificate_public_key, certificate = init_bootstrap(args.bootstrap_link)
+        print(f"Initiating bootstrap with {bootstrap_link}")
+        certificate_private_key, certificate_public_key, certificate = init_bootstrap(bootstrap_link)
 
     # Blast past a failure... without it this fails in gramine
     # when calling ssl.wrap_socket

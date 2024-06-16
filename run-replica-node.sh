@@ -1,1 +1,3 @@
-gramine-sgx python -- --domain item5.ln.soc1024.com --bootstrap_link item4.ln.soc1024.com
+export DOMAIN=item8.ln.soc1024.com
+export BOOTSTRAP_LINK=item8.ln.soc1024.com
+gramine-sgx python
