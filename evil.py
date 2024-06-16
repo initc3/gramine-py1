@@ -1,5 +1,6 @@
-from flask import Flask
+from flask import Flask, Response
 import argparse
+import requests
 
 # A server that returns an incorrect response for a particular IPFS hash
 app = Flask(__name__)
@@ -9,7 +10,8 @@ def handle_ipfs_request(ipfs_hash):
     if ipfs_hash == 'bafkreibrl5n5w5wqpdcdxcwaazheualemevr7ttxzbutiw74stdvrfhn2m':
         return 'Hello mate, I\'m an evil gateway'
     else:
-        return 'Unknown IPFS hash', 404
+        r = requests.get(f'https://ipfs.io/ipfs/{ipfs_hash}')
+        return Response(r.content, status=r.status_code, headers=dict(r.headers));
 
 @app.route('/')
 def home():
@@ -18,6 +20,6 @@ def home():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=3517, help='Port to run the server on')
+    parser.add_argument('--port', type=int, default=8011, help='Port to run the server on')
     args = parser.parse_args()
     app.run(debug=False, port=args.port)
