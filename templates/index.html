@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verified IPFS Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+        .search-container {
+            display: inline-block;
+            width: 300px;
+        }
+        .search-box {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .search-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-top: 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            background-color: #4CAF50;
+            color: white;
+        }
+        .search-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head> 
+<body>
+
+    <h1>Verified IPFS Search</h1>
+    <h2>Powered by SGX</h2>
+
+    <!-- <div class="search-container">
+        <input type="text" class="search-box" placeholder="Type your search...">
+        <button class="search-button">Search</button>
+    </div>  -->
+
+    <form class="search-container" action="search" method="post"> 
+        <label for="user_input">Enter IPFS address:</label>
+        <input type="text" class="search-box" placeholder="Type your search..." id="user_input" name="user_input">
+        <button class="search-button" type="submit">Search</button>
+    </form> 
+
+</body>
+</html> 
