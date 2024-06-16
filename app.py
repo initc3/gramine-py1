@@ -26,6 +26,7 @@ from cryptography.hazmat.backends import default_backend
 
 PRIVATE_KEY_PATH = "data/private_key.pem"
 CERTIFICATE_PATH = "untrustedhost/certificate.pem"
+DOMAIN_NAME=None
 
 # Generate a public/private key pair
 #client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -126,7 +127,7 @@ class IPFSRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.end_headers()
                 self.wfile.write(b'Forbidden: MRENCLAVE verification failed')
-    
+
 def generate_keys_and_csr():
     print("[Bootstrap] Init")
     # Generate a private key
@@ -165,7 +166,7 @@ def generate_keys_and_csr():
     csr_path = "untrustedhost/request.csr"
     with open(csr_path, "wb") as f:
         f.write(csr.public_bytes(serialization.Encoding.PEM))
-        print(f"[Bootstrap] Stored certificate in {csr_path}")
+        print(f"[Bootstrap] Stored CSR in {csr_path}")
         # print(f"[Bootstrap] CSR: {csr.public_bytes(encoding=serialization.Encoding.PEM)}")
 
     # Use certbot to obtain a certificate
@@ -216,7 +217,7 @@ def decrypt_private_key(encrypted_private_key, shared_key):
 
 def init_bootstrap(url: str):
     # Generate a public/private key pair for the client
-    client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
     client_public_key = client_private_key.public_key()
 
     # Generate MRENCLAVE (this is a placeholder and should be replaced with actual SGX MRENCLAVE value)
@@ -284,15 +285,17 @@ def perform_diffie_hellman(client_public_key_pem):
     return derived_key
 
 if __name__ == '__main__':
-    
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8083, help='Port to run the server on')
     parser.add_argument('--gateway', default='https://ipfs.io', help='Upstream gateway to use')
+    parser.add_argument('--domain', required=True, help='Domain this node will serve on')
     # Add the bootstrap_mode argument
     parser.add_argument('--bootstrap_mode', action='store_true', help='Generate public and private keys if set')
     parser.add_argument('--bootstrap_link', type=str, help='Link to boostrap node, if not bootstrapping.')
 
     args = parser.parse_args()
+
+    DOMAIN_NAME=args.domain
 
     has_bootstrapped = False
 
@@ -309,11 +312,11 @@ if __name__ == '__main__':
         certificate_private_key, certificate_public_key, certificate = init_bootstrap(args.bootstrap_link)
     else:
         pass
-    
+
     # Blast past a failure... without it this fails in gramine
     # when calling ssl.wrap_socket
     ssl.SSLSocket.getpeername = lambda _: None
-    
+
     # Create an HTTP server with the SSL-wrapped socket
     httpd = HTTPServer(('0.0.0.0', args.port), IPFSRequestHandler)
     if True:
