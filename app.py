@@ -26,6 +26,7 @@ from cryptography.hazmat.backends import default_backend
 
 PRIVATE_KEY_PATH = "data/private_key.pem"
 CERTIFICATE_PATH = "untrustedhost/certificate.pem"
+DOMAIN_NAME=None
 
 # Generate a public/private key pair
 #client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -284,15 +285,17 @@ def perform_diffie_hellman(client_public_key_pem):
     return derived_key
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8083, help='Port to run the server on')
     parser.add_argument('--gateway', default='https://ipfs.io', help='Upstream gateway to use')
+    parser.add_argument('--domain', required=True, help='Domain this node will serve on')
     # Add the bootstrap_mode argument
     parser.add_argument('--bootstrap_mode', action='store_true', help='Generate public and private keys if set')
     parser.add_argument('--bootstrap_link', type=str, help='Link to boostrap node, if not bootstrapping.')
 
     args = parser.parse_args()
+
+    DOMAIN_NAME=args.domain
 
     has_bootstrapped = False
 
