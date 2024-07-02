@@ -15,7 +15,7 @@ loader.env.RA_TYPE = "dcap"
 loader.argv = [
     "python",
     "app.py",
-    "--port", "8088"
+    "--port", "8089"
 ]
 loader.env.DOMAIN = { passthrough = true }
 loader.env.BOOTSTRAP_MODE = { passthrough = true }
@@ -40,6 +40,7 @@ fs.mounts = [
   { type = "encrypted", path = "/data/", uri = "file:enclave_data/", key_name = "_sgx_mrsigner" },
 
   { path = "/untrustedhost", uri = "file:untrustedhost/" },
+  { path = "/templates", uri = "file:templates/" },
   { path = "/etc/ssl/certs/ca-certificates.crt", uri = "file:/etc/ssl/certs/ca-certificates.crt" },
 ]
 
@@ -68,6 +69,7 @@ sgx.trusted_files = [
   "file:ipfs_cid/",
   "file:/etc/ssl/certs/ca-certificates.crt",
   "file:rsademo.py",
+  "file:templates/",
   "file:app.py",
   "file:unicorn.py",
 ]

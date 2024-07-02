@@ -18,8 +18,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from cryptography.hazmat.primitives.asymmetric import rsa, dh
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, dh, padding
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
@@ -28,36 +27,56 @@ PRIVATE_KEY_PATH = "data/private_key.pem"
 CERTIFICATE_PATH = "untrustedhost/certificate.pem"
 DOMAIN_NAME=None
 
-# Generate a public/private key pair
-#client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-#client_public_key = client_private_key.public_key()
+# Diffie-Hellman parameters (normally these would be agreed upon beforehand)
+DIFFIE_HELLMAN_P = 0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF
+DIFFIE_HELLMAN_G = 2
+
+certificate_private_key = None
+
+import nacl.utils
+from nacl.public import PrivateKey, PublicKey, Box
+import nacl.encoding
+
+# Generate private and public keys
+def generate_keypair():
+    private_key = PrivateKey.generate()
+    public_key = private_key.public_key
+    return private_key, public_key
+
+# Encrypt a message
+def encrypt_message(recipient_public_key, message):
+    # Generate a random nonce
+    nonce = nacl.utils.random(Box.NONCE_SIZE)
+
+    # Create a Box with the public key and a new random private key
+    ephemeral_private_key = PrivateKey.generate()
+    box = Box(ephemeral_private_key, recipient_public_key)
+
+    # Encrypt the message with the nonce
+    encrypted_message = box.encrypt(message, nonce)
+
+    # Return the ephemeral public key and the encrypted message
+    return ephemeral_private_key.public_key, encrypted_message
+
+# Decrypt a message
+def decrypt_message(recipient_private_key, ephemeral_public_key, encrypted_message):
+    # Create a Box with the private key and the ephemeral public key
+    box = Box(recipient_private_key, ephemeral_public_key)
+
+    # Decrypt the message
+    decrypted_message = box.decrypt(encrypted_message)
+
+    return decrypted_message
+
 def encrypt_private_key(certificate_private_key, client_public_key_pem):
+    certificate_private_key = base64.b64(certificate_private_key)
     client_public_key = serialization.load_pem_public_key(client_public_key_pem.encode('utf-8'), backend=default_backend())
-    encrypted_key = client_public_key.encrypt(
-        certificate_private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption()
-        ),
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    return base64.b64encode(encrypted_key).decode('utf-8')
+    return encrypt_message(client_public_key, certificate_private_key)
 
 # Function to decrypt the encrypted private key with the client private key
-def decrypt_private_key(encrypted_key_base64, client_private_key):
+def decrypt_private_key(encrypted_key_base64, client_private_key, ephemeral_public_key):
     encrypted_key = base64.b64decode(encrypted_key_base64)
-    decrypted_key = client_private_key.decrypt(
-        encrypted_key,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
+
     return serialization.load_pem_private_key(decrypted_key, password=None, backend=default_backend())
 
 def verify_mrenclave(mrenclave):
@@ -124,18 +143,19 @@ class IPFSRequestHandler(BaseHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data)
 
-            client_public_key = data['public_key']
+            client_public_key = PublicKey(data['public_key'].encode('utf-8'), encoder=nacl.encoding.Base64Encoder)
             client_mrenclave = data['MRENCLAVE']
 
             # Verify the MRENCLAVE using SGX DCAP (not implemented in this example)
             if verify_mrenclave(client_mrenclave):
                 # Perform Diffie-Hellman exchange
-                encrypted_private_key = encrypt_private_key(certificate_private_key, client_public_key)
+                ephemeral_public_key, encrypted_private_key = encrypt_message(certificate_private_key, client_public_key)
 
                 response = {
                     'public_key': base64.b64encode(certificate_public_key.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)).decode('utf-8'),
                     'certificate': read_certificate(),
-                    'encrypted_private_key': base64.b64encode(encrypted_private_key).decode('utf-8')
+                    'encrypted_private_key': base64.b64encode(encrypted_private_key).decode('utf-8'),
+                    'ephemeral_public_key': ephemeral_public_key.encode(encoder=nacl.encoding.Base64Encoder).decode('utf-8')
                 }
 
                 self.send_response(200)
@@ -201,40 +221,38 @@ def generate_keys_and_csr():
     print("[Bootstrap] Done")
     return private_key, public_key, CERTIFICATE_PATH
 
-def init_bootstrap(url: str):
+def init_bootstrap(url: str, session):
     # Generate a public/private key pair for the client
-    client_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
-    client_public_key = client_private_key.public_key()
+    client_private_key, client_public_key = generate_keypair()
 
     # Generate MRENCLAVE (this is a placeholder and should be replaced with actual SGX MRENCLAVE value)
     mrenclave = "dummy_mrenclave_value"
 
-    # Serialize the client's public key
-    client_public_key_pem = client_public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    ).decode('utf-8')
-
     # Create a JSON payload
     payload = {
-        'public_key': client_public_key_pem,
+        'public_key': client_public_key.encode(encoder=nacl.encoding.Base64Encoder).decode('utf-8'),
         'MRENCLAVE': mrenclave
     }
 
     # Send a POST request to the given URL
-    response = requests.post("https://" + url + '/bootstrap/', json=payload)
+    response = session.post("https://" + url + '/bootstrap/', json=payload)
 
     if response.status_code == 200:
+        print("Received payload from boostrap server")
         response_data = response.json()
-        server_public_key_pem = response_data['public_key']
         certificate_pem = response_data['certificate']
-        encrypted_certificate_private_key = base64.b64decode(response_data['encrypted_private_key'])
-
-        # Deserialize the server's public key
-        server_public_key = serialization.load_pem_public_key(server_public_key_pem.encode('utf-8'))
+        ephemeral_public_key = PublicKey(response_data['ephemeral_public_key'].encode('utf-8'))
+        encrypted_certificate_private_key = response_data['encrypted_private_key'].encode('utf-8')
 
         # Use the client private key to decrypt the certificate private key
-        certificate_private_key = decrypt_private_key(encrypted_certificate_private_key, client_private_key)
+        certificate_private_key_str = decrypt_private_key(encrypted_certificate_private_key, client_private_key, ephemeral_public_key)
+
+        # This is not a NaCl data type, but from cryptography
+        certificate_private_key = serialization.load_pem_private_key(
+                private_key_bytes,
+                password=None,  # No password for demonstration purposes
+                backend=default_backend()
+        )
 
         with open(PRIVATE_KEY_PATH, "wb") as f:
             f.write(certificate_private_key.private_bytes(
@@ -244,27 +262,56 @@ def init_bootstrap(url: str):
             ))
         print(f"[Bootstrap] Stored certificate private key in {PRIVATE_KEY_PATH}")
 
-        with open(CERTIFICATE_PATH, "rb") as f:
+        with open(CERTIFICATE_PATH, "wb") as f:
             f.write(certificate_pem)
         print(f"[Bootstrap] Stored certificate in {CERTIFICATE_PATH}")
 
         print("Received server public key, certificate, and decrypted private key.")
         print(f"Certificate: {certificate_pem}")
-        print(f"Decrypted Private Key: {certificate_private_key.decode('utf-8')}")
+        # print(f"Decrypted Private Key: {certificate_private_key.decode('utf-8')}")
+        return certificate_private_key, certfile
 
     else:
         print(f"Failed to bootstrap: {response.status_code} - {response.text}")
+        return None, None
+
+def get_custom_requests_session():
+    import ssl
+    import requests
+
+    from requests.adapters import HTTPAdapter
+    from requests.packages.urllib3.poolmanager import PoolManager
+    from requests.packages.urllib3.util import ssl_
+    # Create a custom SSL context that only supports TLS 1.3
+    ssl_context = ssl.create_default_context()
+    ssl_context.options |= ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_2
+    ssl_context.minimum_version = ssl.TLSVersion.TLSv1
+
+    # Create a custom HTTPAdapter with the TLS 1.3 SSL context
+    class TLS13HTTPAdapter(requests.adapters.HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            context = ssl_context
+            kwargs['ssl_context'] = context
+            return super(TLS13HTTPAdapter, self).init_poolmanager(*args, **kwargs)
+
+    # Create a session and mount the custom adapter
+    session = requests.Session()
+    adapter = TLS13HTTPAdapter()
+    session.mount('https://', adapter)
+    return session
 
 if __name__ == '__main__':
     print("Entered server main")
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=8086, help='Port to run the server on')
+    parser.add_argument('--port', type=int, default=8089, help='Port to run the server on')
     parser.add_argument('--gateway', default='https://ipfs.io', help='Upstream gateway to use')
 
     args = parser.parse_args()
 
-    has_bootstrapped = False
+    session = get_custom_requests_session()
 
+    has_bootstrapped = False
+    
     DOMAIN_NAME = os.getenv('DOMAIN')
     bootstrap_link = os.getenv('BOOTSTRAP_LINK')
     bootstrap_mode = os.getenv('BOOTSTRAP_MODE')
@@ -278,11 +325,15 @@ if __name__ == '__main__':
         print("Bootstrap mode is not enabled.")
         print("Node must bootstrap before serving HTTP.")
         print(f"Initiating bootstrap with {bootstrap_link}")
-        certificate_private_key, certificate_public_key, certificate = init_bootstrap(bootstrap_link)
+        certificate_private_key, certificate = init_bootstrap(bootstrap_link, session)
+        if certificate_private_key:
+            has_bootstrapped = True
 
     # Blast past a failure... without it this fails in gramine
     # when calling ssl.wrap_socket
     ssl.SSLSocket.getpeername = lambda _: None
+    print(f"args.port: {args.port}")
+
 
     # Create an HTTP server with the SSL-wrapped socket
     httpd = HTTPServer(('0.0.0.0', args.port), IPFSRequestHandler)
@@ -291,7 +342,8 @@ if __name__ == '__main__':
                                    certfile=CERTIFICATE_PATH,
                                    keyfile=PRIVATE_KEY_PATH,
                                    server_side=True,
-                                   do_handshake_on_connect=False)
+                                   ssl_version=ssl.PROTOCOL_TLSv1,
+                                   do_handshake_on_connect=True)
 
     print(f"Starting server on port {args.port}...")
     httpd.serve_forever()

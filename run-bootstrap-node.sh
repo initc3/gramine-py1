@@ -12,6 +12,6 @@ touch untrustedhost/request.csr
         --email pradyumna.shome@gmail.com \
 	    --config-dir certbot --work-dir certbot --logs-dir certbot
 } &
-export DOMAIN=item8.ln.soc1024.com
+export DOMAIN=itemc.ln.soc1024.com
 export BOOTSTRAP_MODE=True
 gramine-sgx python
